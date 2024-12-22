@@ -218,6 +218,7 @@ class GoogleDriveHelper:
         return msg
 
     async def upload(self, file_name, size, gdrive_id):
+        self.__is_uploading = True
         try:
             if hasattr(self.__listener, 'uptype') and self.__listener.uptype == 'cine':
                 item_path = f"{self.__path}/{file_name}"
@@ -248,36 +249,14 @@ class GoogleDriveHelper:
                     await self.__listener.onUploadError("GDRIVE_ID not Provided!")
                     return
                 
-        self.__is_uploading = True
-        item_path = f"{self.__path}/{file_name}"
-        LOGGER.info(f"Uploading: {item_path}")
-        self.__updater = setInterval(self.__update_interval, self.__progress)
-        try:
+            item_path = f"{self.__path}/{file_name}"
+            LOGGER.info(f"Uploading: {item_path}")
+            self.__updater = setInterval(self.__update_interval, self.__progress)
+            
             if ospath.isfile(item_path):
                 if item_path.lower().endswith(tuple(GLOBAL_EXTENSION_FILTER)):
                     raise Exception('This file extension is excluded by extension filter!')
                 mime_type = get_mime_type(item_path)
-                if hasattr(self.__listener, 'uptype') and self.__listener.uptype == 'cine':
-                    user_dict = user_data.get(self.__user_id, {})
-                    if not (cine_conf := user_dict.get('cine')):
-                        raise Exception('Cine Drive not configured! Configure it using /rclone command')
-                    rclone_path = f"{getcwd()}/{cine_conf}"
-                    if not await aiopath.exists(rclone_path):
-                        raise Exception('Cine Drive config file not found!')
-                    from bot.helper.mirror_utils.upload_utils.rcloneTransfer import RcloneTransferHelper
-                    rclone = RcloneTransferHelper(self.__listener, self.name, self.__path)
-                    link = await rclone.upload(item_path)
-                    if self.__is_cancelled:
-                        return
-                    LOGGER.info(f"Uploaded To Cine Drive: {item_path}")
-                    if not self.__listener.seed or self.__listener.newDir:
-                        try:
-                            osremove(item_path)
-                        except:
-                            pass
-                    await self.__listener.onUploadComplete(link, size, self.__total_files,
-                                    self.__total_folders, mime_type, self.name)
-                    return
                 link = await self.__upload_file(
                     item_path, file_name, mime_type, gdrive_id, is_dir=False)
                 if self.__is_cancelled:
@@ -298,24 +277,29 @@ class GoogleDriveHelper:
                 LOGGER.info(f"Uploaded To G-Drive: {file_name}")
         except Exception as err:
             if isinstance(err, RetryError):
-                LOGGER.info(
-                    f"Total Attempts: {err.last_attempt.attempt_number}")
+                LOGGER.info(f"Total Attempts: {err.last_attempt.attempt_number}")
                 err = err.last_attempt.exception()
             err = str(err).replace('>', '').replace('<', '')
-            async_to_sync(self.__listener.onUploadError, err)
+            if "User rate limit exceeded" in err:
+                msg = "User rate limit exceeded."
+            elif "File not found" in err:
+                msg = "File not found."
+            else:
+                msg = f"Error.\n{err}"
+            await self.__listener.onUploadError(msg)
             self.__is_errored = True
         finally:
-            self.__updater.cancel()
+            if self.__updater is not None:
+                await self.__updater.cancel()
             if self.__is_cancelled and not self.__is_errored:
                 if mime_type == 'Folder':
                     LOGGER.info("Deleting uploaded data from Drive...")
-                    link = self.__G_DRIVE_DIR_BASE_DOWNLOAD_URL.format(dir_id)
-                    self.deletefile(link)
-                return
-            elif self.__is_errored:
-                return
-            async_to_sync(self.__listener.onUploadComplete, link, size, self.__total_files,
-                          self.__total_folders, mime_type, file_name)
+                    link = await self.__upload_file(
+                        item_path, file_name, mime_type, gdrive_id, is_dir=False)
+                await self.__listener.onUploadError('Upload cancelled!')
+            if not self.__is_errored:
+                await self.__listener.onUploadComplete(link, size, self.__total_files,
+                                                     self.__total_folders, mime_type, self.name)
 
     def __upload_dir(self, input_directory, dest_id):
         list_dirs = listdir(input_directory)
@@ -651,7 +635,7 @@ class GoogleDriveHelper:
                 msg += f'<h4>📌 Drive Query : {fileName}</h4>'
                 Title = True
             if drive_name:
-                msg += f"<aside>╾──────────────────────╼</aside><br><aside><b>#{no} {drive_name} Drive</b></aside><br><aside>╾──────────────────────╼</aside><br>"
+                msg += f"<aside>╾──────────────────────╼</aside><br><aside><b>#{no} {drive_name} Drive</b></aside><br><aside>╾────��─────────────────╼</aside><br>"
             msg += "<ol>"
             for file in response.get('files', []):
                 mime_type = file.get('mimeType')
