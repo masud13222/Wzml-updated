@@ -58,7 +58,14 @@ class RcloneManager:
             user_dict = user_data.get(user_id, {})
             if 'oauth_config' not in user_dict:
                 raise Exception("No pending authorization found")
-                
+            
+            # Extract code from URL if full URL is pasted
+            if code.startswith('http'):
+                try:
+                    code = code.split('code=')[1].split('&')[0]
+                except:
+                    raise Exception("Invalid authorization URL")
+            
             oauth_config = user_dict['oauth_config']
             
             # Create flow with same redirect_uri that was used for auth URL
@@ -78,8 +85,8 @@ class RcloneManager:
             # Set redirect_uri
             flow.redirect_uri = self.redirect_uri
             
-            # Fetch token
-            flow.fetch_token(code=code)
+            # Fetch token synchronously 
+            token = flow.fetch_token(code=code)
             credentials = flow.credentials
             
             token_data = {
@@ -121,6 +128,7 @@ root_folder_id ="""
             return True
             
         except Exception as e:
+            LOGGER.error(f"Token save error: {str(e)}")
             user_dict = user_data.get(user_id, {})
             if 'oauth_config' in user_dict:
                 del user_dict['oauth_config']
