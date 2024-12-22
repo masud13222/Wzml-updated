@@ -345,6 +345,8 @@ async def _mirror_leech(client, message, isQbit=False, isLeech=False, sameDir=No
             await sendMessage(message, 'Cine Drive config file not found!')
             return
         listener.uptype = 'cine'
+    elif not drive_id and config_dict['GDRIVE_ID']:
+        drive_id = config_dict['GDRIVE_ID']
 
     listener = MirrorLeechListener(message, compress, extract, isQbit, isLeech, tag, select, seed,
                                     sameDir, rcf, up, join, drive_id=drive_id, index_link=index_link, 
@@ -372,7 +374,7 @@ async def _mirror_leech(client, message, isQbit=False, isLeech=False, sameDir=No
     elif is_mega_link(link):
         await delete_links(message)
         await add_mega_download(link, f'{path}/', listener, name)
-    elif isQbit and 'real-debrid' not in link:
+    elif Qbit and 'real-debrid' not in link:
         await add_qb_torrent(link, path, listener, ratio, seed_time)
     elif not is_telegram_link(link):
         if ussr or pssw:

@@ -2,7 +2,7 @@
 from logging import getLogger, ERROR
 from time import time
 from pickle import load as pload
-from os import makedirs, path as ospath, listdir, remove as osremove
+from os import makedirs, path as ospath, listdir, remove as osremove, getcwd
 from io import FileIO
 from re import search as re_search
 from urllib.parse import parse_qs, urlparse, quote as rquote
@@ -12,11 +12,13 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type, RetryError
-
-from bot import OWNER_ID, config_dict, list_drives_dict, GLOBAL_EXTENSION_FILTER
 from bot.helper.ext_utils.bot_utils import setInterval, async_to_sync, get_readable_file_size, fetch_user_tds
 from bot.helper.ext_utils.fs_utils import get_mime_type
 from bot.helper.ext_utils.leech_utils import format_filename
+from bot.helper.ext_utils.path_utils import aiopath
+
+from bot import OWNER_ID, config_dict, list_drives_dict, GLOBAL_EXTENSION_FILTER
+from bot.helper.ext_utils.user_data import user_data
 
 LOGGER = getLogger(__name__)
 getLogger('googleapiclient.discovery').setLevel(ERROR)
@@ -217,9 +219,13 @@ class GoogleDriveHelper:
                 break
         return msg
 
-    def upload(self, file_name, size, gdrive_id):
-        if not gdrive_id:
+    async def upload(self, file_name, size, gdrive_id):
+        if not gdrive_id and not hasattr(self.__listener, 'uptype'):
             gdrive_id = config_dict['GDRIVE_ID']
+            if not gdrive_id:
+                await self.__listener.onUploadError("GDRIVE_ID not Provided!")
+                return
+        
         self.__is_uploading = True
         item_path = f"{self.__path}/{file_name}"
         LOGGER.info(f"Uploading: {item_path}")
@@ -229,7 +235,28 @@ class GoogleDriveHelper:
                 if item_path.lower().endswith(tuple(GLOBAL_EXTENSION_FILTER)):
                     raise Exception('This file extension is excluded by extension filter!')
                 mime_type = get_mime_type(item_path)
-                link = self.__upload_file(
+                if hasattr(self.__listener, 'uptype') and self.__listener.uptype == 'cine':
+                    user_dict = user_data.get(self.__user_id, {})
+                    if not (cine_conf := user_dict.get('cine')):
+                        raise Exception('Cine Drive not configured! Configure it using /rclone command')
+                    rclone_path = f"{getcwd()}/{cine_conf}"
+                    if not await aiopath.exists(rclone_path):
+                        raise Exception('Cine Drive config file not found!')
+                    from bot.helper.mirror_utils.upload_utils.rcloneTransfer import RcloneTransferHelper
+                    rclone = RcloneTransferHelper(self.__listener, rclone_path)
+                    link = await rclone.upload(item_path)
+                    if self.__is_cancelled:
+                        return
+                    LOGGER.info(f"Uploaded To Cine Drive: {item_path}")
+                    if not self.__listener.seed or self.__listener.newDir:
+                        try:
+                            osremove(item_path)
+                        except:
+                            pass
+                    await self.__listener.onUploadComplete(link, size, self.__total_files,
+                                    self.__total_folders, mime_type, self.name)
+                    return
+                link = await self.__upload_file(
                     item_path, file_name, mime_type, gdrive_id, is_dir=False)
                 if self.__is_cancelled:
                     return
