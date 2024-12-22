@@ -218,11 +218,35 @@ class GoogleDriveHelper:
         return msg
 
     async def upload(self, file_name, size, gdrive_id):
-        if not gdrive_id and not hasattr(self.__listener, 'uptype'):
-            gdrive_id = config_dict['GDRIVE_ID']
-            if not gdrive_id:
-                await self.__listener.onUploadError("GDRIVE_ID not Provided!")
+        try:
+            if hasattr(self.__listener, 'uptype') and self.__listener.uptype == 'cine':
+                item_path = f"{self.__path}/{file_name}"
+                user_dict = user_data.get(self.__user_id, {})
+                if not (cine_conf := user_dict.get('cine')):
+                    raise Exception('Cine Drive not configured! Configure it using /rclone command')
+                rclone_path = f"{getcwd()}/{cine_conf}"
+                if not await aiopath.exists(rclone_path):
+                    raise Exception('Cine Drive config file not found!')
+                from bot.helper.mirror_utils.upload_utils.rcloneTransfer import RcloneTransferHelper
+                rclone = RcloneTransferHelper(self.__listener, self.name, self.__path)
+                link = await rclone.upload(item_path)
+                if self.__is_cancelled:
+                    return
+                LOGGER.info(f"Uploaded To Cine Drive: {item_path}")
+                if not self.__listener.seed or self.__listener.newDir:
+                    try:
+                        osremove(item_path)
+                    except:
+                        pass
+                await self.__listener.onUploadComplete(link, size, self.__total_files,
+                                self.__total_folders, mime_type, self.name)
                 return
+            
+            if not gdrive_id:
+                gdrive_id = config_dict['GDRIVE_ID']
+                if not gdrive_id:
+                    await self.__listener.onUploadError("GDRIVE_ID not Provided!")
+                    return
                 
         self.__is_uploading = True
         item_path = f"{self.__path}/{file_name}"
