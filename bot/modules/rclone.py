@@ -113,8 +113,9 @@ root_folder_id ="""
             if not await aiopath.isdir(path):
                 await mkdir(path)
             
-            async with open(f"{path}{user_id}_cine.conf", 'w') as f:
-                await f.write(rclone_config)
+            # Use regular file operations instead of async
+            with open(f"{path}{user_id}_cine.conf", 'w') as f:
+                f.write(rclone_config)
                 
             # Update user data
             user_dict['cine'] = f'wcl/{user_id}_cine.conf'
