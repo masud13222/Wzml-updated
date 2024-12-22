@@ -220,8 +220,15 @@ class GoogleDriveHelper:
     async def upload(self, file_name, size, gdrive_id):
         self.__is_uploading = True
         try:
+            item_path = f"{self.__path}/{file_name}"
+            if ospath.isfile(item_path):
+                if item_path.lower().endswith(tuple(GLOBAL_EXTENSION_FILTER)):
+                    raise Exception('This file extension is excluded by extension filter!')
+                mime_type = get_mime_type(item_path)
+            else:
+                mime_type = 'Folder'
+
             if hasattr(self.__listener, 'uptype') and self.__listener.uptype == 'cine':
-                item_path = f"{self.__path}/{file_name}"
                 user_dict = user_data.get(self.__user_id, {})
                 if not (cine_conf := user_dict.get('cine')):
                     raise Exception('Cine Drive not configured! Configure it using /rclone command')
@@ -249,14 +256,10 @@ class GoogleDriveHelper:
                     await self.__listener.onUploadError("GDRIVE_ID not Provided!")
                     return
                 
-            item_path = f"{self.__path}/{file_name}"
             LOGGER.info(f"Uploading: {item_path}")
             self.__updater = setInterval(self.__update_interval, self.__progress)
             
             if ospath.isfile(item_path):
-                if item_path.lower().endswith(tuple(GLOBAL_EXTENSION_FILTER)):
-                    raise Exception('This file extension is excluded by extension filter!')
-                mime_type = get_mime_type(item_path)
                 link = await self.__upload_file(
                     item_path, file_name, mime_type, gdrive_id, is_dir=False)
                 if self.__is_cancelled:
@@ -265,7 +268,6 @@ class GoogleDriveHelper:
                     raise Exception('Upload has been manually cancelled')
                 LOGGER.info(f"Uploaded To G-Drive: {item_path}")
             else:
-                mime_type = 'Folder'
                 dir_id = self.__create_directory(ospath.basename(
                     ospath.abspath(file_name)), gdrive_id)
                 result = self.__upload_dir(item_path, dir_id)
@@ -635,7 +637,7 @@ class GoogleDriveHelper:
                 msg += f'<h4>📌 Drive Query : {fileName}</h4>'
                 Title = True
             if drive_name:
-                msg += f"<aside>╾──────────────────────╼</aside><br><aside><b>#{no} {drive_name} Drive</b></aside><br><aside>╾────��─────────────────╼</aside><br>"
+                msg += f"<aside>╾──────────────────────╼</aside><br><aside><b>#{no} {drive_name} Drive</b></aside><br><aside>╾──────────────────────────────╼</aside><br>"
             msg += "<ol>"
             for file in response.get('files', []):
                 mime_type = file.get('mimeType')
