@@ -24,7 +24,7 @@ DEFAULT_CLIENT_CONFIG = {
         "client_secret": "X4Z3ca8xfWDb1Voo-F9a7",
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": ["http://localhost:53682/"]
+        "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob"]
     }
 }
 
@@ -38,7 +38,7 @@ class RcloneManager:
             DEFAULT_CLIENT_CONFIG,
             self.SCOPES
         )
-        flow.redirect_uri = "http://localhost:53682/"
+        flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
         
         auth_url, _ = flow.authorization_url(
             access_type='offline',
