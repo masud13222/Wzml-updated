@@ -12,13 +12,12 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type, RetryError
+
+from bot import OWNER_ID, config_dict, list_drives_dict, GLOBAL_EXTENSION_FILTER, user_data
 from bot.helper.ext_utils.bot_utils import setInterval, async_to_sync, get_readable_file_size, fetch_user_tds
 from bot.helper.ext_utils.fs_utils import get_mime_type
 from bot.helper.ext_utils.leech_utils import format_filename
-from bot.helper.ext_utils.path_utils import aiopath
-
-from bot import OWNER_ID, config_dict, list_drives_dict, GLOBAL_EXTENSION_FILTER
-from bot.helper.ext_utils.user_data import user_data
+from aiofiles.os import path as aiopath
 
 LOGGER = getLogger(__name__)
 getLogger('googleapiclient.discovery').setLevel(ERROR)
@@ -32,7 +31,6 @@ class GoogleDriveHelper:
         self.__G_DRIVE_BASE_DOWNLOAD_URL = "https://drive.google.com/uc?id={}&export=download"
         self.__G_DRIVE_DIR_BASE_DOWNLOAD_URL = "https://drive.google.com/drive/folders/{}"
         self.__listener = listener
-        self.__user_id = listener.message.from_user.id if listener else None
         self.__path = path
         self.__total_bytes = 0
         self.__total_files = 0
@@ -40,11 +38,10 @@ class GoogleDriveHelper:
         self.__processed_bytes = 0
         self.__total_time = 0
         self.__start_time = 0
-        self.__alt_auth = False
-        self.__is_uploading = False
-        self.__is_downloading = False
-        self.__is_cloning = False
         self.__is_cancelled = False
+        self.__is_downloading = False
+        self.__is_uploading = False
+        self.__is_cloning = False
         self.__is_errored = False
         self.__status = None
         self.__updater = None
@@ -56,6 +53,7 @@ class GoogleDriveHelper:
         self.__file_processed_bytes = 0
         self.__processed_bytes = 0
         self.name = name
+        self.__user_id = listener.message.from_user.id if listener else None
 
     @property
     def speed(self):
@@ -225,7 +223,7 @@ class GoogleDriveHelper:
             if not gdrive_id:
                 await self.__listener.onUploadError("GDRIVE_ID not Provided!")
                 return
-        
+                
         self.__is_uploading = True
         item_path = f"{self.__path}/{file_name}"
         LOGGER.info(f"Uploading: {item_path}")
@@ -243,7 +241,7 @@ class GoogleDriveHelper:
                     if not await aiopath.exists(rclone_path):
                         raise Exception('Cine Drive config file not found!')
                     from bot.helper.mirror_utils.upload_utils.rcloneTransfer import RcloneTransferHelper
-                    rclone = RcloneTransferHelper(self.__listener, rclone_path)
+                    rclone = RcloneTransferHelper(self.__listener, self.name, self.__path)
                     link = await rclone.upload(item_path)
                     if self.__is_cancelled:
                         return

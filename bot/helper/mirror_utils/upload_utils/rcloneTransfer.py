@@ -2,7 +2,7 @@
 from asyncio import create_subprocess_shell, subprocess
 from os import path as ospath
 from re import findall as re_findall
-from bot import LOGGER
+from bot import LOGGER, user_data
 from bot.helper.ext_utils.bot_utils import cmd_exec
 from json import loads
 from aiofiles.os import path as aiopath
@@ -10,17 +10,20 @@ from time import time
 
 
 class RcloneTransferHelper:
-    def __init__(self, listener=None, rclone_path=None):
+    def __init__(self, listener=None, name=None, path=None):
         self.__listener = listener
-        self.__rclone_path = rclone_path
+        self.name = name
+        self.__path = path
         self.__start_time = time()
         self.__processed_bytes = 0
         self.is_cancelled = False
+        self.__is_errored = False
         self.__status = None
         self.__transferred_size = '0 B'
         self.__percentage = '0%'
         self.__speed = '0 B/s'
         self.__eta = '-'
+        self.__user_id = self.__listener.message.from_user.id
         self.__total_files = 0
         self.__transferred_files = 0
         self.__total_folders = 0
@@ -28,8 +31,20 @@ class RcloneTransferHelper:
         self.__total_size = 0
         self.__engine = 'Rclone v2'
 
+    async def __user_settings(self):
+        user_dict = user_data.get(self.__user_id, {})
+        return user_dict.get('cine', '')
+
     async def upload(self, file_path):
-        cmd = ['rclone', 'copy', '--config', self.__rclone_path, str(file_path), 'cine:', '-P']
+        rclone_conf = await self.__user_settings()
+        if not rclone_conf:
+            raise Exception('Rclone configuration not found! Configure it using /rclone command')
+
+        rclone_path = f"{ospath.dirname(ospath.dirname(ospath.dirname(ospath.dirname(__file__))))}/{rclone_conf}"
+        if not await aiopath.exists(rclone_path):
+            raise Exception('Rclone configuration file not found!')
+
+        cmd = ['rclone', 'copy', '--config', rclone_path, str(file_path), 'cine:', '-P']
         LOGGER.info(f"Upload Command: {cmd}")
 
         self.__status = await create_subprocess_shell(" ".join(cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -69,7 +84,8 @@ class RcloneTransferHelper:
             except Exception as e:
                 if not str(e) == 'Upload cancelled!':
                     LOGGER.error(f"Error in rclone upload: {str(e)}")
-                raise e
+                self.__is_errored = True
+                break
 
         stdout, stderr = await self.__status.communicate()
         
@@ -78,7 +94,7 @@ class RcloneTransferHelper:
             LOGGER.error(f"Rclone upload error: {err_message}")
             raise Exception(err_message)
 
-        result = await cmd_exec(['rclone', 'link', '--config', self.__rclone_path, 'cine:'+ospath.basename(file_path)])
+        result = await cmd_exec(['rclone', 'link', '--config', rclone_path, 'cine:'+ospath.basename(file_path)])
         if result[2] != 0:
             LOGGER.error(f"Error getting link: {result[1]}")
             raise Exception(result[1])
@@ -105,4 +121,4 @@ class RcloneTransferHelper:
             self.__status.kill()
             await self.__status.wait()
         LOGGER.info(f"Cancelling Upload: {self.name}")
-        await self.__listener.onUploadError('Upload cancelled by user!')
+        await self.__listener.onUploadError('Upload cancelled by user!') 
