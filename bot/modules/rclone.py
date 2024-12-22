@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from pyrogram.handlers import MessageHandler, CallbackQueryHandler
-from pyrogram.filters import command, regex
+from pyrogram.filters import command, regex, create
 from os import path as ospath, getcwd
 from aiofiles.os import path as aiopath, mkdir
 from datetime import datetime
@@ -122,6 +122,11 @@ async def rclone_command(client, message):
     except Exception as e:
         await sendMessage(message, f"Error: {str(e)}")
 
+async def is_auth_code(_, __, message):
+    user_id = message.from_user.id
+    user_dict = user_data.get(user_id, {})
+    return 'oauth_config' in user_dict
+
 async def rclone_auth(client, message):
     user_id = message.from_user.id
     try:
@@ -132,4 +137,4 @@ async def rclone_auth(client, message):
         await sendMessage(message, f"Error: {str(e)}")
 
 bot.add_handler(MessageHandler(rclone_command, filters=command(BotCommands.RcloneCommand) & CustomFilters.authorized))
-bot.add_handler(MessageHandler(rclone_auth, filters=CustomFilters.authorized)) 
+bot.add_handler(MessageHandler(rclone_auth, filters=create(is_auth_code) & CustomFilters.authorized)) 
