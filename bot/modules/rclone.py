@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-from pyrogram.handlers import MessageHandler, CallbackQueryHandler
-from pyrogram.filters import command, regex, create
+from pyrogram.handlers import MessageHandler
+from pyrogram.filters import command, create
 from os import path as ospath, getcwd
 from aiofiles.os import path as aiopath, mkdir
 from datetime import datetime
@@ -10,7 +10,7 @@ from google.auth.transport.requests import Request
 from bot import bot, user_data, DATABASE_URL
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.filters import CustomFilters
-from bot.helper.telegram_helper.message_utils import sendMessage, editMessage
+from bot.helper.telegram_helper.message_utils import sendMessage
 from bot.helper.telegram_helper.button_build import ButtonMaker
 from bot.helper.ext_utils.db_handler import DbManger
 import logging
@@ -31,6 +31,7 @@ DEFAULT_CLIENT_CONFIG = {
 class RcloneManager:
     def __init__(self):
         self.SCOPES = ['https://www.googleapis.com/auth/drive']
+        self._flow_dict = {}
         
     async def get_auth_url(self, user_id: int):
         flow = InstalledAppFlow.from_client_config(
@@ -44,10 +45,11 @@ class RcloneManager:
             prompt='consent'
         )
         
+        self._flow_dict[user_id] = flow
+        
         user_dict = user_data.get(user_id, {})
         user_dict['oauth_config'] = {
-            "created_at": str(datetime.utcnow()),
-            "flow": flow
+            "created_at": str(datetime.utcnow())
         }
         user_data[user_id] = user_dict
         if DATABASE_URL:
@@ -56,11 +58,10 @@ class RcloneManager:
         return auth_url
         
     async def save_token(self, user_id: int, code: str):
-        user_dict = user_data.get(user_id, {})
-        if 'oauth_config' not in user_dict:
+        if user_id not in self._flow_dict:
             raise Exception("No pending authorization found")
             
-        flow = user_dict['oauth_config']['flow']
+        flow = self._flow_dict[user_id]
         try:
             flow.fetch_token(code=code)
             creds = flow.credentials
@@ -90,17 +91,24 @@ root_folder_id ="""
             async with open(f"{path}{user_id}_cine.conf", 'w') as f:
                 await f.write(rclone_config)
                 
+            user_dict = user_data.get(user_id, {})
             user_dict['cine'] = f'wcl/{user_id}_cine.conf'
             user_dict['token'] = token_data
             del user_dict['oauth_config']
+            user_data[user_id] = user_dict
             
             if DATABASE_URL:
                 await DbManger().update_user_data(user_id)
             
+            del self._flow_dict[user_id]
             return True
             
         except Exception as e:
-            del user_dict['oauth_config']
+            if user_id in self._flow_dict:
+                del self._flow_dict[user_id]
+            user_dict = user_data.get(user_id, {})
+            if 'oauth_config' in user_dict:
+                del user_dict['oauth_config']
             if DATABASE_URL:
                 await DbManger().update_user_data(user_id)
             raise Exception(f"Failed to save token: {str(e)}")
@@ -143,4 +151,4 @@ async def rclone_auth(client, message):
         await sendMessage(message, f"Error: {str(e)}")
 
 bot.add_handler(MessageHandler(rclone_command, filters=command(BotCommands.RcloneCommand) & CustomFilters.authorized))
-bot.add_handler(MessageHandler(rclone_auth, filters=create(is_auth_code) & CustomFilters.authorized)) 
+bot.add_handler(MessageHandler(rclone_auth, filters=create(is_auth_code) & CustomFilters.authorized))
