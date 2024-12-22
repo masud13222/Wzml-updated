@@ -17,73 +17,91 @@ import logging
 
 LOGGER = logging.getLogger(__name__)
 
-# Default client configuration
-DEFAULT_CLIENT_CONFIG = {
-    "installed": {
-        "client_id": "202264815644.apps.googleusercontent.com",
-        "client_secret": "X4Z3ca8xfWDb1Voo-F9a7",
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob"]
-    }
-}
-
 class RcloneManager:
     def __init__(self):
         self.SCOPES = ['https://www.googleapis.com/auth/drive']
         self._flow_dict = {}
+        self.client_id = "202264815644.apps.googleusercontent.com"
+        self.client_secret = "X4Z3ca8xfWDb1Voo-F9a7ZxJ"
+        self.redirect_uri = "http://127.0.0.1:53682"
         
     async def get_auth_url(self, user_id: int):
-        flow = InstalledAppFlow.from_client_config(
-            DEFAULT_CLIENT_CONFIG,
-            self.SCOPES
+        """Generate authorization URL for Google Drive"""
+        auth_url = (
+            "https://accounts.google.com/o/oauth2/auth"
+            f"?client_id={self.client_id}"
+            f"&redirect_uri={self.redirect_uri}"
+            "&response_type=code"
+            "&scope=https://www.googleapis.com/auth/drive"
+            "&access_type=offline"
+            "&approval_prompt=force"
         )
-        flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
         
-        auth_url, _ = flow.authorization_url(
-            access_type='offline',
-            prompt='consent'
-        )
-        
-        self._flow_dict[user_id] = flow
-        
+        # Store config for later use
         user_dict = user_data.get(user_id, {})
         user_dict['oauth_config'] = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "redirect_uri": self.redirect_uri,
             "created_at": str(datetime.utcnow())
         }
         user_data[user_id] = user_dict
+        
         if DATABASE_URL:
             await DbManger().update_user_data(user_id)
-            
+        
         return auth_url
         
     async def save_token(self, user_id: int, code: str):
-        if user_id not in self._flow_dict:
-            raise Exception("No pending authorization found")
-            
-        flow = self._flow_dict[user_id]
+        """Save token after authorization"""
         try:
+            user_dict = user_data.get(user_id, {})
+            if 'oauth_config' not in user_dict:
+                raise Exception("No pending authorization found")
+                
+            oauth_config = user_dict['oauth_config']
+            
+            # Create flow with same redirect_uri that was used for auth URL
+            flow = InstalledAppFlow.from_client_config(
+                {
+                    "installed": {
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "redirect_uris": [self.redirect_uri]
+                    }
+                },
+                self.SCOPES
+            )
+            
+            # Set redirect_uri
+            flow.redirect_uri = self.redirect_uri
+            
+            # Fetch token
             flow.fetch_token(code=code)
-            creds = flow.credentials
+            credentials = flow.credentials
             
             token_data = {
-                "token": creds.token,
-                "refresh_token": creds.refresh_token,
-                "token_uri": creds.token_uri,
-                "client_id": creds.client_id,
-                "client_secret": creds.client_secret,
-                "scopes": creds.scopes,
-                "expiry": creds.expiry.isoformat()
+                "token": credentials.token,
+                "refresh_token": credentials.refresh_token,
+                "token_uri": credentials.token_uri,
+                "client_id": credentials.client_id,
+                "client_secret": credentials.client_secret,
+                "scopes": credentials.scopes,
+                "expiry": credentials.expiry.isoformat()
             }
             
+            # Generate rclone config
             rclone_config = f"""[cine]
 type = drive
-client_id = {creds.client_id}
-client_secret = {creds.client_secret}
-token = {{"access_token":"{creds.token}","token_type":"Bearer","refresh_token":"{creds.refresh_token}","expiry":"{creds.expiry.isoformat()}"}}
+client_id = {credentials.client_id}
+client_secret = {credentials.client_secret}
+token = {{"access_token":"{credentials.token}","token_type":"Bearer","refresh_token":"{credentials.refresh_token}","expiry":"{credentials.expiry.isoformat()}"}}
 team_drive = 
 root_folder_id ="""
 
+            # Save rclone config file
             path = f'{getcwd()}/wcl/'
             if not await aiopath.isdir(path):
                 await mkdir(path)
@@ -91,7 +109,7 @@ root_folder_id ="""
             async with open(f"{path}{user_id}_cine.conf", 'w') as f:
                 await f.write(rclone_config)
                 
-            user_dict = user_data.get(user_id, {})
+            # Update user data
             user_dict['cine'] = f'wcl/{user_id}_cine.conf'
             user_dict['token'] = token_data
             del user_dict['oauth_config']
@@ -100,12 +118,9 @@ root_folder_id ="""
             if DATABASE_URL:
                 await DbManger().update_user_data(user_id)
             
-            del self._flow_dict[user_id]
             return True
             
         except Exception as e:
-            if user_id in self._flow_dict:
-                del self._flow_dict[user_id]
             user_dict = user_data.get(user_id, {})
             if 'oauth_config' in user_dict:
                 del user_dict['oauth_config']
@@ -128,7 +143,7 @@ async def rclone_command(client, message):
         
 1. Click Authorize button
 2. Allow permissions in browser
-3. Copy the authorization code
+3. Copy the code from the browser
 4. Send the code here"""
         LOGGER.info(f"Sending auth URL to user {user_id}")
         await sendMessage(message, msg, button)
