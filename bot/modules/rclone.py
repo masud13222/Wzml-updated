@@ -7,31 +7,31 @@ from datetime import datetime
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
-import socket
-from bot import bot, config_dict, user_data, DATABASE_URL
+from bot import bot, user_data, DATABASE_URL
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.filters import CustomFilters
 from bot.helper.telegram_helper.message_utils import sendMessage, editMessage
 from bot.helper.telegram_helper.button_build import ButtonMaker
 from bot.helper.ext_utils.db_handler import DbManger
 
-# Default rclone config
-DEFAULT_RCLONE_CONFIG = {
-    "client_id": "202264815644.apps.googleusercontent.com",
-    "client_secret": "X4Z3ca8xfWDb1Voo-F9a7",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "redirect_uris": ["http://localhost:53682/"]
+# Default client configuration
+DEFAULT_CLIENT_CONFIG = {
+    "installed": {
+        "client_id": "202264815644.apps.googleusercontent.com",
+        "client_secret": "X4Z3ca8xfWDb1Voo-F9a7",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "redirect_uris": ["http://localhost:53682/"]
+    }
 }
 
 class RcloneManager:
     def __init__(self):
-        self.oauth_config = DEFAULT_RCLONE_CONFIG
         self.SCOPES = ['https://www.googleapis.com/auth/drive']
         
     async def get_auth_url(self, user_id: int):
         flow = InstalledAppFlow.from_client_config(
-            {"installed": self.oauth_config}, 
+            DEFAULT_CLIENT_CONFIG,
             self.SCOPES
         )
         flow.redirect_uri = "http://localhost:53682/"
