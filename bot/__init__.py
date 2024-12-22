@@ -17,6 +17,15 @@ from faulthandler import enable as faulthandler_enable
 from socket import setdefaulttimeout
 from logging import getLogger, Formatter, FileHandler, StreamHandler, INFO, basicConfig, error as log_error, info as log_info, warning as log_warning
 from uvloop import install
+import logging
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.FileHandler('log.txt'), logging.StreamHandler()],
+    level=logging.INFO
+)
+
+LOGGER = logging.getLogger(__name__)
 
 faulthandler_enable()
 install()
@@ -28,8 +37,6 @@ basicConfig(format="[%(asctime)s] [%(levelname)s] - %(message)s", #  [%(filename
             datefmt="%d-%b-%y %I:%M:%S %p",
             handlers=[FileHandler('log.txt'), StreamHandler()],
             level=INFO)
-
-LOGGER = getLogger(__name__)
 
 load_dotenv('config.env', override=True)
 

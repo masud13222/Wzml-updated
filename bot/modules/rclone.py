@@ -13,6 +13,9 @@ from bot.helper.telegram_helper.filters import CustomFilters
 from bot.helper.telegram_helper.message_utils import sendMessage, editMessage
 from bot.helper.telegram_helper.button_build import ButtonMaker
 from bot.helper.ext_utils.db_handler import DbManger
+import logging
+
+LOGGER = logging.getLogger(__name__)
 
 # Default client configuration
 DEFAULT_CLIENT_CONFIG = {
@@ -106,6 +109,7 @@ rclone_manager = RcloneManager()
 
 async def rclone_command(client, message):
     user_id = message.from_user.id
+    LOGGER.info(f"Rclone command from user {user_id}")
     try:
         auth_url = await rclone_manager.get_auth_url(user_id)
         buttons = ButtonMaker()
@@ -118,8 +122,10 @@ async def rclone_command(client, message):
 2. Allow permissions in browser
 3. Copy the authorization code
 4. Send the code here"""
+        LOGGER.info(f"Sending auth URL to user {user_id}")
         await sendMessage(message, msg, button)
     except Exception as e:
+        LOGGER.error(f"Error in rclone command: {str(e)}")
         await sendMessage(message, f"Error: {str(e)}")
 
 async def is_auth_code(_, __, message):
